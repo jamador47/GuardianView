@@ -78,6 +78,57 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 > **Note:** Use headphones to prevent the model from hearing its own audio output.
 
+## 🧪 Reproducible Testing (For Judges)
+
+Follow these steps to verify GuardianView's core capabilities. Each test can be performed with just a webcam and common household or workshop items.
+
+### Test 1: PPE Detection (Workshop Profile)
+
+1. Start the app with the **Workshop** profile selected (default)
+2. Connect camera, microphone, and click **Connect**
+3. Sit in front of the camera at a desk or workbench
+4. Pick up any tool (screwdriver, drill, soldering iron, etc.) and begin using it **without safety glasses**
+5. **Expected:** GuardianView speaks a warning about missing eye protection within a few seconds, citing OSHA 1910.133
+6. Put on safety glasses and continue working
+7. **Expected:** GuardianView acknowledges the correction or stops warning about eye protection
+
+### Test 2: Kitchen Hazard Detection (Kitchen Profile)
+
+1. Switch to the **Kitchen** profile using the dropdown
+2. Reconnect (disconnect and connect again so the new profile takes effect)
+3. Stand in front of a kitchen counter with a cutting board and knife
+4. Begin cutting food with an improper grip or cutting toward your body
+5. **Expected:** GuardianView warns about unsafe knife handling technique
+6. Place raw meat next to ready-to-eat food on the same surface
+7. **Expected:** GuardianView warns about cross-contamination risk
+
+### Test 3: Voice Interaction (Any Profile)
+
+1. While connected, ask out loud: *"What PPE do I need before using an angle grinder?"*
+2. **Expected:** GuardianView responds with a spoken safety checklist (eye protection, face shield, gloves, ear protection)
+3. Say: *"Is it safe to mix bleach and ammonia?"*
+4. **Expected:** GuardianView warns against mixing these chemicals and may use Google Search to ground its response
+
+### Test 4: Proactive Monitoring (No User Speech)
+
+1. Connect and do **not** speak at all
+2. Simply work in front of the camera, deliberately introducing a visible hazard (e.g., removing gloves, reaching near a hot surface)
+3. **Expected:** GuardianView speaks up on its own without any user prompt, demonstrating proactive monitoring via the heartbeat mechanism
+
+### Test 5: Profile Switching
+
+1. Note the type of warnings received with the current profile
+2. Switch to a different profile (e.g., Workshop → Kitchen) using the dropdown
+3. Disconnect and reconnect
+4. **Expected:** Warnings now correspond to the new profile's hazard categories (e.g., no longer mentioning PPE, now watching for food safety)
+
+### Troubleshooting
+
+- **No audio from agent:** Make sure your browser has autoplay permissions enabled for localhost. Try clicking anywhere on the page first (browsers require user interaction before playing audio).
+- **Agent not responding:** Check the terminal for errors. Verify your `GOOGLE_API_KEY` is valid and has Gemini API access.
+- **Camera not showing:** Ensure you've granted camera permissions in your browser. Try using Chrome or Edge.
+- **Agent too chatty or too quiet:** The heartbeat ping interval (1 second) and system prompt can be tuned in `app/static/js/app.js` and `app/guardianview_agent/agent.py` respectively.
+
 ## ☁️ Google Cloud Deployment
 
 ### Automated Deployment
@@ -119,7 +170,7 @@ Set the active profile via the `SAFETY_PROFILE` environment variable or the UI d
 
 | Component | Technology |
 |-----------|-----------|
-| AI Model | Gemini 2.5 Flash (Native Audio) via Live API |
+| AI Model | Gemini 2.0 Flash via Live API |
 | Agent Framework | Google Agent Development Kit (ADK) |
 | Backend | Python, FastAPI, WebSockets |
 | Frontend | HTML, CSS, JavaScript, Web Audio API |
