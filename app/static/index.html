@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GuardianView — AI Safety Copilot</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">🛡️</span>
+                <h1>GuardianView</h1>
+                <span class="tagline">AI Safety Copilot</span>
+            </div>
+            <div class="header-controls">
+                <select id="profileSelect" class="profile-select">
+                    <option value="workshop">🔧 Workshop</option>
+                    <option value="kitchen">🍳 Kitchen</option>
+                    <option value="clinical">🏥 Clinical</option>
+                </select>
+                <div class="status-indicator" id="statusIndicator">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Disconnected</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Video Feed -->
+            <div class="video-section">
+                <div class="video-container">
+                    <video id="videoPreview" autoplay playsinline muted></video>
+                    <div class="video-overlay" id="videoOverlay">
+                        <p>Click <strong>Start Camera</strong> to begin monitoring</p>
+                    </div>
+                    <div class="alert-banner" id="alertBanner" style="display: none;">
+                        <span class="alert-icon">⚠️</span>
+                        <span class="alert-text" id="alertText"></span>
+                    </div>
+                </div>
+                <div class="video-controls">
+                    <button id="btnCamera" class="btn btn-primary" onclick="toggleCamera()">
+                        📷 Start Camera
+                    </button>
+                    <button id="btnMic" class="btn btn-secondary" onclick="toggleMicrophone()" disabled>
+                        🎤 Start Mic
+                    </button>
+                    <button id="btnConnect" class="btn btn-accent" onclick="toggleConnection()" disabled>
+                        🔗 Connect
+                    </button>
+                </div>
+            </div>
+
+            <!-- Side Panel -->
+            <div class="side-panel">
+                <!-- Chat / Transcript -->
+                <div class="panel-section transcript-section">
+                    <h3>💬 Conversation</h3>
+                    <div class="transcript-log" id="transcriptLog">
+                        <div class="system-message">
+                            Welcome to GuardianView. Start your camera and microphone, then connect to begin real-time safety monitoring.
+                        </div>
+                    </div>
+                    <div class="text-input-area">
+                        <input type="text" id="textInput" placeholder="Type a message..." onkeypress="handleTextKeypress(event)" disabled>
+                        <button id="btnSend" onclick="sendTextMessage()" disabled>Send</button>
+                    </div>
+                </div>
+
+                <!-- Incident Log -->
+                <div class="panel-section incident-section">
+                    <h3>📋 Safety Incidents</h3>
+                    <div class="incident-log" id="incidentLog">
+                        <div class="no-incidents">No incidents detected yet.</div>
+                    </div>
+                </div>
+
+                <!-- Settings -->
+                <div class="panel-section settings-section">
+                    <h3>⚙️ Settings</h3>
+                    <label class="setting-toggle">
+                        <input type="checkbox" id="enableProactivity" checked>
+                        <span>Proactive alerts (agent speaks first)</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" id="enableAffectiveDialog">
+                        <span>Affective dialog (emotional awareness)</span>
+                    </label>
+                    <div class="frame-rate-control">
+                        <label>Camera frame rate: <span id="fpsValue">1</span> FPS</label>
+                        <input type="range" id="fpsSlider" min="0.5" max="2" step="0.5" value="1" oninput="updateFps()">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Audio Worklet Processors -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
