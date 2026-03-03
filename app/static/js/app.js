@@ -287,10 +287,13 @@ function connectWebSocket() {
     
     // ✅ ADD THIS: Periodic ping to keep agent analyzing the camera feed
     window._pingInterval = setInterval(() => {
-        if (websocket && websocket.readyState === WebSocket.OPEN) {
-            websocket.send(JSON.stringify({ type: "text", text: "." }));
-        }
-    }, 1000);
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        websocket.send(JSON.stringify({ 
+            type: "text", 
+            text: "Check the current camera frame. ONLY speak if you detect a hazard. If everything looks safe, stay silent and say nothing." 
+        }));
+    }
+    }, 5000);
     
     addSystemMessage("Connected to GuardianView. Safety monitoring is active.");
 };

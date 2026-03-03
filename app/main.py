@@ -96,11 +96,15 @@ def _build_run_config(
     # FIX: Only pass 'proactive_audio'. 
     # Do not include 'enabled': True as it is 'extra_forbidden' in this version.
     if enable_proactivity:
-        config_kwargs["proactivity"] = {
-            "proactive_audio": True 
-        }
+        try:
+            config_kwargs["proactivity"] = {"proactive_audio": True}
+            print("[GuardianView] Proactivity config: proactive_audio enabled")
+        except Exception as e:
+            print(f"[GuardianView] Proactivity config failed: {e}")
 
-    return RunConfig(**config_kwargs)
+    run_config = RunConfig(**config_kwargs)
+    print(f"[GuardianView] RunConfig built successfully: {run_config}")
+    return run_config
 
 # --- WebSocket Endpoint ---
 

@@ -155,7 +155,7 @@ Briefly mention the regulation (e.g., OSHA 1910.133) during your spoken alert so
 """
 
 # Ensure you are using the latest native-audio model
-MODEL = os.getenv("GUARDIANVIEW_MODEL", "gemini-2.0-flash-exp")
+MODEL = os.getenv("GUARDIANVIEW_MODEL", "gemini-2.5-flash-native-audio-preview-12-2025")
 
 root_agent = Agent(
     name="guardianview_safety_agent",
