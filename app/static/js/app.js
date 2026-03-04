@@ -809,3 +809,60 @@ stopMicrophone = function() {
         btnLabel.textContent = "Start Mic";
     }
 };
+
+// --- Multi-Language Alert Support ---
+function changeAlertLanguage() {
+    const select = document.getElementById("languageSelect");
+    const language = select.value;
+
+    if (!isConnected || !websocket) {
+        addSystemMessage(`Language preference saved: ${language}. Connect to apply the change.`);
+        return;
+    }
+
+    // Send message to agent to switch language
+    const message = `Switch alert language to ${language}`;
+    websocket.send(JSON.stringify({ type: "text", text: message }));
+    addSystemMessage(`Switching alert language to ${language}...`);
+}
+
+// --- PDF Report Generation ---
+async function generateSafetyReport() {
+    const btnReport = document.getElementById("btnGenerateReport");
+    if (!btnReport) return;
+
+    try {
+        // Show loading state
+        btnReport.disabled = true;
+        btnReport.innerHTML = '<span class="btn-icon">⏳</span><span class="btn-label">Generating...</span>';
+
+        // Fetch PDF from backend
+        const response = await fetch(`/api/report/${sessionId}`, {
+            method: "POST",
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to generate report: ${response.statusText}`);
+        }
+
+        // Download the PDF
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `guardianview_report_${sessionId}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+
+        addSystemMessage("Safety report generated and downloaded successfully!");
+    } catch (error) {
+        console.error("[GuardianView] Error generating report:", error);
+        addSystemMessage(`Error generating report: ${error.message}`);
+    } finally {
+        // Reset button state
+        btnReport.disabled = false;
+        btnReport.innerHTML = '<span class="btn-icon">📊</span><span class="btn-label">Generate Report</span>';
+    }
+}

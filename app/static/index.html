@@ -146,6 +146,20 @@
                             </select>
                         </div>
 
+                        <!-- Alert Language -->
+                        <div class="setting-item">
+                            <label class="setting-label">Alert Language</label>
+                            <select id="languageSelect" class="setting-select" onchange="changeAlertLanguage()">
+                                <option value="English">English</option>
+                                <option value="Spanish">Español (Spanish)</option>
+                                <option value="French">Français (French)</option>
+                                <option value="Portuguese">Português (Portuguese)</option>
+                                <option value="German">Deutsch (German)</option>
+                                <option value="Chinese">中文 (Chinese)</option>
+                                <option value="Japanese">日本語 (Japanese)</option>
+                            </select>
+                        </div>
+
                         <!-- Proactive Alerts Toggle -->
                         <div class="setting-item">
                             <label class="setting-toggle">
@@ -170,6 +184,14 @@
                                 Frame Rate: <span id="fpsValue" class="setting-value">1</span> FPS
                             </label>
                             <input type="range" id="fpsSlider" class="setting-slider" min="0.5" max="2" step="0.5" value="1" oninput="updateFps()">
+                        </div>
+
+                        <!-- Generate Report Button -->
+                        <div class="setting-item">
+                            <button id="btnGenerateReport" class="control-btn control-btn-primary" onclick="generateSafetyReport()" style="width: 100%; margin-top: 10px;">
+                                <span class="btn-icon">📊</span>
+                                <span class="btn-label">Generate Report</span>
+                            </button>
                         </div>
                     </div>
                 </div>

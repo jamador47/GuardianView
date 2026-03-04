@@ -29,10 +29,12 @@ import asyncio
 import base64
 import json
 import traceback
+from datetime import datetime
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
+from fpdf import FPDF
 
 from google.adk.agents import LiveRequestQueue
 from google.adk.runners import Runner
@@ -41,6 +43,7 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
 from guardianview_agent import root_agent
+from guardianview_agent import agent as guardianview_agent_module
 
 # --- Application Setup ---
 
@@ -118,6 +121,19 @@ async def websocket_endpoint(
     """Handle WebSocket connections for real-time bidi-streaming."""
     await websocket.accept()
     print(f"[GuardianView] Client connected: user={user_id}, session={session_id}")
+
+    # Initialize session storage for incidents
+    if session_id not in guardianview_agent_module.SESSION_INCIDENTS:
+        guardianview_agent_module.SESSION_INCIDENTS[session_id] = []
+        guardianview_agent_module.SESSION_METADATA[session_id] = {
+            "start_time": datetime.now().isoformat(),
+            "user_id": user_id,
+            "safety_profile": guardianview_agent_module.SAFETY_PROFILE,
+        }
+        print(f"[GuardianView] Initialized session storage for {session_id}")
+
+    # Set current session ID for the agent
+    guardianview_agent_module.current_session_id = session_id
 
     # Create or resume session
     session = await session_service.get_session(
@@ -283,6 +299,159 @@ async def websocket_endpoint(
         print(f"[GuardianView] Session error: {e}")
     finally:
         print(f"[GuardianView] Session ended: user={user_id}, session={session_id}")
+
+
+# --- PDF Report Generation ---
+
+
+def generate_safety_report_pdf(session_id: str) -> bytes:
+    """Generate a PDF safety report for the given session.
+
+    Args:
+        session_id: The session ID to generate the report for.
+
+    Returns:
+        bytes: The PDF file content as bytes.
+    """
+    # Get session data
+    incidents = guardianview_agent_module.SESSION_INCIDENTS.get(session_id, [])
+    metadata = guardianview_agent_module.SESSION_METADATA.get(session_id, {})
+
+    # Calculate session duration
+    start_time_str = metadata.get("start_time", datetime.now().isoformat())
+    start_time = datetime.fromisoformat(start_time_str)
+    duration = datetime.now() - start_time
+    duration_str = f"{int(duration.total_seconds() // 3600):02d}:{int((duration.total_seconds() % 3600) // 60):02d}:{int(duration.total_seconds() % 60):02d}"
+
+    # Count incidents by severity
+    severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    for incident in incidents:
+        severity = incident.get("severity", "low").lower()
+        if severity in severity_counts:
+            severity_counts[severity] += 1
+
+    # Create PDF with proper margins
+    pdf = FPDF(orientation='P', unit='mm', format='A4')
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.add_page()
+    pdf.set_margins(left=20, top=20, right=20)
+
+    # Header
+    pdf.set_font("Helvetica", "B", 24)
+    pdf.cell(0, 15, "GuardianView Safety Report", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(5)
+
+    # Session Metadata Section
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 10, "Session Information", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(0, 6, f"Session ID: {session_id}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, f"Date: {start_time.strftime('%Y-%m-%d %H:%M:%S')}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, f"Duration: {duration_str}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, f"Safety Profile: {metadata.get('safety_profile', 'Unknown').upper()}", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(5)
+
+    # Summary Statistics Section
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 10, "Summary Statistics", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(0, 6, f"Total Incidents: {len(incidents)}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, f"  - Critical: {severity_counts['critical']}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, f"  - High: {severity_counts['high']}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, f"  - Medium: {severity_counts['medium']}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, f"  - Low: {severity_counts['low']}", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(5)
+
+    # Incident Table Section
+    if incidents:
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.cell(0, 10, "Incident Details", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(2)
+
+        for idx, incident in enumerate(incidents, 1):
+            # Incident header
+            severity = incident.get("severity", "low").upper()
+            timestamp = incident.get("timestamp", "Unknown")
+            try:
+                dt = datetime.fromisoformat(timestamp)
+                time_str = dt.strftime("%H:%M:%S")
+            except:
+                time_str = timestamp
+
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.cell(0, 6, f"Incident #{idx} - {severity} - {time_str}", new_x="LMARGIN", new_y="NEXT")
+
+            # Incident details
+            pdf.set_font("Helvetica", "", 10)
+
+            # Description
+            description = incident.get("description", "No description")
+            pdf.set_x(20)  # Reset X position to left margin
+            pdf.multi_cell(0, 5, f"Description: {description}")
+
+            # Regulation
+            regulation = incident.get("regulation", "")
+            if regulation:
+                pdf.set_x(20)
+                pdf.multi_cell(0, 5, f"Regulation: {regulation}")
+
+            # Recommendation
+            recommendation = incident.get("recommendation", "")
+            if recommendation:
+                pdf.set_x(20)
+                pdf.multi_cell(0, 5, f"Recommendation: {recommendation}")
+
+            pdf.ln(3)
+
+    # Recommendations Section
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 10, "General Recommendations", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 11)
+
+    if severity_counts['critical'] > 0 or severity_counts['high'] > 0:
+        pdf.set_x(20)
+        pdf.multi_cell(0, 5, "- Immediate action required: Address all CRITICAL and HIGH severity incidents before resuming work.")
+    if severity_counts['medium'] > 0:
+        pdf.set_x(20)
+        pdf.multi_cell(0, 5, "- Review and address MEDIUM severity incidents to improve workplace safety.")
+    if len(incidents) == 0:
+        pdf.set_x(20)
+        pdf.multi_cell(0, 5, "- Excellent! No safety incidents were detected during this session.")
+    else:
+        pdf.set_x(20)
+        pdf.multi_cell(0, 5, "- Continue monitoring your workspace for potential hazards.")
+        pdf.set_x(20)
+        pdf.multi_cell(0, 5, "- Ensure all required PPE is worn and properly maintained.")
+        pdf.set_x(20)
+        pdf.multi_cell(0, 5, "- Review safety protocols regularly with your team.")
+
+    # Footer
+    pdf.ln(10)
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.cell(0, 5, f"Report generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 5, "GuardianView - AI Safety Copilot", align="C", new_x="LMARGIN", new_y="NEXT")
+
+    # Return PDF as bytes
+    return bytes(pdf.output())
+
+
+@app.post("/api/report/{session_id}")
+async def generate_report(session_id: str):
+    """Generate and download a PDF safety report for the given session."""
+    try:
+        pdf_bytes = generate_safety_report_pdf(session_id)
+
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=guardianview_report_{session_id}.pdf"
+            }
+        )
+    except Exception as e:
+        print(f"[GuardianView] Error generating report: {e}")
+        traceback.print_exc()
+        return {"error": str(e)}, 500
 
 
 # --- Static Routes ---

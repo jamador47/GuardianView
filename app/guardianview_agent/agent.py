@@ -2,11 +2,19 @@
 
 import os
 import json
+from datetime import datetime
+from typing import Dict, List
 from google.adk.agents import Agent
 from google.adk.tools import google_search
 
+# Global storage for incidents by session
+SESSION_INCIDENTS: Dict[str, List[dict]] = {}
+SESSION_METADATA: Dict[str, dict] = {}
+current_session_id: str = None
+
 # Load safety profile from environment or default to workshop
 SAFETY_PROFILE = os.getenv("SAFETY_PROFILE", "workshop")
+ALERT_LANGUAGE = os.getenv("ALERT_LANGUAGE", "English")
 
 # Safety profiles define domain-specific hazard awareness
 SAFETY_PROFILES = {
@@ -116,16 +124,38 @@ def log_safety_incident(
     Returns:
         dict: Confirmation of the logged incident.
     """
+    from datetime import datetime
+
     incident = {
+        "timestamp": datetime.now().isoformat(),
         "severity": severity,
         "description": description,
         "regulation": regulation,
         "recommendation": recommendation,
         "_send_to_frontend": True  # Flag for main.py to send this to frontend
     }
+
+    # Store in session incident list
+    if current_session_id and current_session_id in SESSION_INCIDENTS:
+        SESSION_INCIDENTS[current_session_id].append(incident)
+
     # In production, this would write to Cloud Firestore
     print(f"[SAFETY INCIDENT] {json.dumps(incident)}")
     return {"status": "logged", "incident": incident}
+
+
+def set_alert_language(language: str) -> dict:
+    """Sets the language for safety alerts.
+
+    Args:
+        language: The language name (e.g., "Spanish", "French", "Chinese")
+
+    Returns:
+        dict: Confirmation of the language change.
+    """
+    global ALERT_LANGUAGE
+    ALERT_LANGUAGE = language
+    return {"status": "success", "language": language, "message": f"Alert language changed to {language}"}
 
 
 # Load the active profile for the system instruction
@@ -135,11 +165,14 @@ SYSTEM_INSTRUCTION = f"""You are GuardianView, an autonomous AI safety watchdog 
 
 ## Your Active Safety Profile: {active_profile['name']}
 
+## LANGUAGE SETTING: {ALERT_LANGUAGE}
+You must speak all safety alerts and responses in {ALERT_LANGUAGE}. When you call log_safety_incident, you must write the description, regulation, and recommendation fields in {ALERT_LANGUAGE} as well. If the user speaks to you in a different language, respond in their language instead.
+
 ## CRITICAL RULES:
 
 **When you receive [SAFETY_CHECK]:**
 - Analyze what you see in the current moment
-- If you see a CRITICAL or HIGH hazard RIGHT NOW: Speak a warning immediately (1-2 sentences) AND call log_safety_incident
+- If you see a CRITICAL or HIGH hazard RIGHT NOW: Speak a warning immediately (1-2 sentences) in {ALERT_LANGUAGE} AND call log_safety_incident
 - If everything is safe: Do nothing. No response. No output. Complete silence.
 
 **NEVER do these things:**
@@ -150,9 +183,10 @@ SYSTEM_INSTRUCTION = f"""You are GuardianView, an autonomous AI safety watchdog 
 - Never describe safe scenes or explain why you're staying quiet
 
 **When you see a hazard:**
+- Speak in {ALERT_LANGUAGE}
 - Use firm, urgent tone for CRITICAL/HIGH severity
 - Include the specific regulation (e.g., "OSHA 1910.133 requires eye protection")
-- Example: "Stop! Put on safety glasses before using that drill. OSHA 1910.133 requires eye protection."
+- Example in English: "Stop! Put on safety glasses before using that drill. OSHA 1910.133 requires eye protection."
 
 **Memory:**
 - Each [SAFETY_CHECK] is completely independent
@@ -185,5 +219,6 @@ root_agent = Agent(
         get_safety_profile,
         list_safety_profiles,
         log_safety_incident,
+        set_alert_language,
     ],
 )

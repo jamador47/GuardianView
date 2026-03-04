@@ -604,7 +604,8 @@ body::after {
 }
 
 .section-content {
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
     max-height: 500px;
     transition: max-height 0.3s ease;
 }
