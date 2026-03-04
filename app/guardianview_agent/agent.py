@@ -156,6 +156,8 @@ Your role is to monitor the user's workspace via REAL-TIME live video camera fee
 
 ## Cite Regulations:
 Briefly mention the regulation (e.g., OSHA 1910.133) during your spoken alert so the user understands the 'why'.
+
+## If no issues dont say anything, specially not SILENCE WHEN SAFE.
 """
 
 # Ensure you are using the latest native-audio model

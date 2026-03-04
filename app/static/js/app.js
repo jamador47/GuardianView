@@ -450,10 +450,204 @@ function showAlert(text, severity) {
 function addIncident(severity, description) {
     const noIncidents = incidentLog.querySelector(".no-incidents");
     if (noIncidents) noIncidents.remove();
-    
+
     const time = new Date().toLocaleTimeString();
     const div = document.createElement("div");
     div.className = "incident-item " + severity;
     div.innerHTML = `<strong>${time}</strong> ${description.substring(0, 80)}`;
     incidentLog.prepend(div);
+
+    // UI Enhancements: Update safety score and video border
+    updateSafetyScoreUI(severity);
+    triggerVideoBorderPulse(severity);
 }
+
+// ===== UI-ONLY ENHANCEMENTS =====
+
+// --- Safety Score System (Visual Only) ---
+let currentSafetyScore = 100;
+let scoreRecoveryInterval = null;
+
+function updateSafetyScoreUI(severity) {
+    const scoreElement = document.getElementById("safetyScore");
+    const gaugeFill = document.getElementById("gaugeFill");
+
+    if (!scoreElement || !gaugeFill) return;
+
+    const scorePenalty = {
+        critical: 30,
+        high: 20,
+        medium: 10,
+        low: 5
+    };
+
+    currentSafetyScore = Math.max(0, currentSafetyScore - (scorePenalty[severity] || 5));
+
+    scoreElement.textContent = currentSafetyScore;
+    gaugeFill.style.width = currentSafetyScore + "%";
+
+    scoreElement.classList.remove("warning", "danger");
+    gaugeFill.classList.remove("warning", "danger");
+
+    if (currentSafetyScore < 50) {
+        scoreElement.classList.add("danger");
+        gaugeFill.classList.add("danger");
+    } else if (currentSafetyScore < 75) {
+        scoreElement.classList.add("warning");
+        gaugeFill.classList.add("warning");
+    }
+
+    if (!scoreRecoveryInterval && currentSafetyScore < 100) {
+        scoreRecoveryInterval = setInterval(() => {
+            if (currentSafetyScore < 100) {
+                currentSafetyScore = Math.min(100, currentSafetyScore + 1);
+                scoreElement.textContent = currentSafetyScore;
+                gaugeFill.style.width = currentSafetyScore + "%";
+
+                scoreElement.classList.remove("warning", "danger");
+                gaugeFill.classList.remove("warning", "danger");
+
+                if (currentSafetyScore < 50) {
+                    scoreElement.classList.add("danger");
+                    gaugeFill.classList.add("danger");
+                } else if (currentSafetyScore < 75) {
+                    scoreElement.classList.add("warning");
+                    gaugeFill.classList.add("warning");
+                }
+            } else {
+                clearInterval(scoreRecoveryInterval);
+                scoreRecoveryInterval = null;
+            }
+        }, 3000);
+    }
+}
+
+// --- Video Border Pulse (Visual Only) ---
+function triggerVideoBorderPulse(severity) {
+    const videoContainer = document.getElementById("videoContainer");
+    if (!videoContainer) return;
+
+    videoContainer.classList.remove("alert-critical", "alert-high");
+
+    if (severity === "critical") {
+        videoContainer.classList.add("alert-critical");
+    } else if (severity === "high") {
+        videoContainer.classList.add("alert-high");
+    }
+
+    setTimeout(() => {
+        videoContainer.classList.remove("alert-critical", "alert-high");
+    }, 10000);
+}
+
+// --- Session Timer (Visual Only) ---
+let sessionStartTime = null;
+let sessionTimerInterval = null;
+
+function startSessionTimerUI() {
+    if (sessionTimerInterval) return;
+
+    sessionStartTime = Date.now();
+    const timerElement = document.getElementById("sessionTimer");
+    if (!timerElement) return;
+
+    sessionTimerInterval = setInterval(() => {
+        const elapsed = Date.now() - sessionStartTime;
+        const hours = Math.floor(elapsed / 3600000);
+        const minutes = Math.floor((elapsed % 3600000) / 60000);
+        const seconds = Math.floor((elapsed % 60000) / 1000);
+
+        timerElement.textContent =
+            String(hours).padStart(2, "0") + ":" +
+            String(minutes).padStart(2, "0") + ":" +
+            String(seconds).padStart(2, "0");
+    }, 1000);
+}
+
+function stopSessionTimerUI() {
+    if (sessionTimerInterval) {
+        clearInterval(sessionTimerInterval);
+        sessionTimerInterval = null;
+        sessionStartTime = null;
+        const timerElement = document.getElementById("sessionTimer");
+        if (timerElement) {
+            timerElement.textContent = "00:00:00";
+        }
+    }
+}
+
+// Hook into existing setConnected to start/stop timer
+const originalSetConnected = setConnected;
+setConnected = function(connected) {
+    originalSetConnected(connected);
+    if (connected) {
+        startSessionTimerUI();
+    } else {
+        stopSessionTimerUI();
+    }
+};
+
+// --- Collapsible Sidebar Sections (Visual Only) ---
+function toggleSidebarSection(header) {
+    const content = header.nextElementSibling;
+    header.classList.toggle("collapsed");
+    content.classList.toggle("collapsed");
+}
+
+// --- Profile Badge Update (Visual Only) ---
+function updateProfileBadge() {
+    const select = document.getElementById("profileSelect");
+    const profileIcon = document.querySelector(".profile-icon");
+    const profileName = document.querySelector(".profile-name");
+
+    if (!select || !profileIcon || !profileName) return;
+
+    const profiles = {
+        workshop: { icon: "🔧", name: "WORKSHOP SAFETY" },
+        kitchen: { icon: "🍳", name: "KITCHEN SAFETY" },
+        clinical: { icon: "🏥", name: "CLINICAL SAFETY" }
+    };
+
+    const selected = profiles[select.value];
+    if (selected) {
+        profileIcon.textContent = selected.icon;
+        profileName.textContent = selected.name;
+    }
+}
+
+// --- Update Button Labels for New UI Structure (Visual Only) ---
+const originalStartCamera = startCamera;
+startCamera = async function() {
+    await originalStartCamera();
+    const btnLabel = btnCamera.querySelector(".btn-label");
+    if (btnLabel) {
+        btnLabel.textContent = "Stop Camera";
+    }
+};
+
+const originalStopCamera = stopCamera;
+stopCamera = function() {
+    originalStopCamera();
+    const btnLabel = btnCamera.querySelector(".btn-label");
+    if (btnLabel) {
+        btnLabel.textContent = "Start Camera";
+    }
+};
+
+const originalStartMicrophone = startMicrophone;
+startMicrophone = async function() {
+    await originalStartMicrophone();
+    const btnLabel = btnMic.querySelector(".btn-label");
+    if (btnLabel) {
+        btnLabel.textContent = "Stop Mic";
+    }
+};
+
+const originalStopMicrophone = stopMicrophone;
+stopMicrophone = function() {
+    originalStopMicrophone();
+    const btnLabel = btnMic.querySelector(".btn-label");
+    if (btnLabel) {
+        btnLabel.textContent = "Start Mic";
+    }
+};
