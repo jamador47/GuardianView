@@ -161,9 +161,14 @@ async def websocket_endpoint(
                 elif msg_type == "image":
                     # Video frame from camera (base64 JPEG)
                     image_data = base64.b64decode(msg["data"])
-                    live_request_queue.send_realtime(
-                        types.Blob(data=image_data, mime_type="image/jpeg")
+                    # Send image as content so it's included in the model's context
+                    live_request_queue.send_content(
+                        types.Content(
+                            role="user",
+                            parts=[types.Part(inline_data=types.Blob(data=image_data, mime_type="image/jpeg"))],
+                        )
                     )
+                    print(f"[GuardianView] Sent image frame ({len(image_data)} bytes)")
 
                 elif msg_type == "text":
                     # Text message

@@ -140,17 +140,19 @@ function stopCamera() {
 
 function startFrameCapture() {
     if (frameInterval) return;
-    
+
     const canvas = document.createElement("canvas");
     canvas.width = 640;
     canvas.height = 480;
     const ctx = canvas.getContext("2d");
-    
+
     const intervalMs = 1000 / framesPerSecond;
-    
+
+    let frameCount = 0;
+
     frameInterval = setInterval(() => {
         if (!isCameraOn || !isConnected || !websocket) return;
-        
+
         ctx.drawImage(videoPreview, 0, 0, 640, 480);
         canvas.toBlob((blob) => {
             if (!blob) return;
@@ -158,7 +160,19 @@ function startFrameCapture() {
             reader.onload = () => {
                 const base64 = reader.result.split(",")[1];
                 if (websocket && websocket.readyState === WebSocket.OPEN) {
+                    // Always send the camera frame
                     websocket.send(JSON.stringify({ type: "image", data: base64 }));
+
+                    // Every 5 frames (5 seconds at 1fps), trigger an analysis
+                    // This sends a prompt AFTER the image so the agent has visual context
+                    frameCount++;
+                    if (frameCount >= 5) {
+                        frameCount = 0;
+                        websocket.send(JSON.stringify({
+                            type: "text",
+                            text: "You are receiving live camera frames. Check the most recent frame for hazards. Speak only if you detect a hazard, otherwise stay silent."
+                        }));
+                    }
                 }
             };
             reader.readAsDataURL(blob);
@@ -281,20 +295,10 @@ function connectWebSocket() {
         enable_affective_dialog: document.getElementById("enableAffectiveDialog").checked,
     };
     websocket.send(JSON.stringify(config));
-    
+
     setConnected(true);
     startFrameCapture();
-    
-    // ✅ ADD THIS: Periodic ping to keep agent analyzing the camera feed
-    window._pingInterval = setInterval(() => {
-    if (websocket && websocket.readyState === WebSocket.OPEN) {
-        websocket.send(JSON.stringify({ 
-            type: "text", 
-            text: "Check the current camera frame. ONLY speak if you detect a hazard. If everything looks safe, stay silent and say nothing." 
-        }));
-    }
-    }, 5000);
-    
+
     addSystemMessage("Connected to GuardianView. Safety monitoring is active.");
 };
     
@@ -316,7 +320,6 @@ function connectWebSocket() {
 }
 
 function disconnectWebSocket() {
-    clearInterval(window._pingInterval); // ✅ ADD THIS
     if (websocket) {
         websocket.send(JSON.stringify({ type: "close" }));
         websocket.close();
