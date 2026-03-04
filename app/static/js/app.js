@@ -163,14 +163,15 @@ function startFrameCapture() {
                     // Always send the camera frame
                     websocket.send(JSON.stringify({ type: "image", data: base64 }));
 
-                    // Every 5 frames (5 seconds at 1fps), trigger an analysis
-                    // This sends a prompt AFTER the image so the agent has visual context
+                    // Every 2 frames (2 seconds at 1fps), trigger a safety check
                     frameCount++;
-                    if (frameCount >= 5) {
+                    console.log(`[GuardianView] Frame count: ${frameCount}`);
+                    if (frameCount >= 2) {
                         frameCount = 0;
+                        console.log("[GuardianView] Sending [SAFETY_CHECK] prompt");
                         websocket.send(JSON.stringify({
                             type: "text",
-                            text: "You are receiving live camera frames. Check the most recent frame for hazards. Speak only if you detect a hazard, otherwise stay silent."
+                            text: "[SAFETY_CHECK]"
                         }));
                     }
                 }
@@ -218,23 +219,65 @@ async function startMicrophone() {
                 noiseSuppression: true,
             },
         });
-        
+
         audioContext = new AudioContext({ sampleRate: 16000 });
         const source = audioContext.createMediaStreamSource(audioStream);
-        
+
+        // Interrupt detection state
+        let consecutiveHighAudioChunks = 0;
+        const CHUNKS_REQUIRED_FOR_INTERRUPT = 3; // Require 3 consecutive chunks ~300-400ms of speech
+        const AUDIO_THRESHOLD = 5; // Increased threshold to avoid noise
+
         // Use ScriptProcessor as fallback (AudioWorklet requires HTTPS)
         const processor = audioContext.createScriptProcessor(4096, 1, 1);
         processor.onaudioprocess = (e) => {
             if (!isConnected || !websocket) return;
-            
+
             const inputData = e.inputBuffer.getChannelData(0);
+
+            // Calculate audio level to detect if user is speaking
+            let sum = 0;
+            for (let i = 0; i < inputData.length; i++) {
+                sum += inputData[i] * inputData[i];
+            }
+            const rms = Math.sqrt(sum / inputData.length);
+            const audioLevel = rms * 100; // Scale to 0-100
+
+            // Require sustained speech before interrupting (prevent false positives from bumps/noise)
+            if (isPlaying && audioLevel > AUDIO_THRESHOLD) {
+                consecutiveHighAudioChunks++;
+                if (consecutiveHighAudioChunks >= CHUNKS_REQUIRED_FOR_INTERRUPT) {
+                    console.log(`[GuardianView] Interrupt triggered - completely discarding agent's message`);
+
+                    // Clear audio playback immediately
+                    clearPlaybackQueue();
+
+                    // Clear the agent's text message to prevent resuming
+                    if (currentAgentMessage) {
+                        currentAgentMessage.remove();
+                        currentAgentMessage = null;
+                    }
+                    agentIsActuallySpeaking = false;
+
+                    // Send interrupt to backend
+                    if (websocket && websocket.readyState === WebSocket.OPEN) {
+                        websocket.send(JSON.stringify({ type: "interrupt" }));
+                    }
+
+                    consecutiveHighAudioChunks = 0; // Reset after interrupt
+                }
+            } else {
+                // Reset counter if audio drops below threshold or agent not playing
+                consecutiveHighAudioChunks = 0;
+            }
+
             // Convert Float32 to PCM16
             const pcm16 = new Int16Array(inputData.length);
             for (let i = 0; i < inputData.length; i++) {
                 const s = Math.max(-1, Math.min(1, inputData[i]));
                 pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
             }
-            
+
             const base64 = arrayBufferToBase64(pcm16.buffer);
             if (websocket && websocket.readyState === WebSocket.OPEN) {
                 websocket.send(JSON.stringify({ type: "audio", data: base64 }));
@@ -345,27 +388,46 @@ function setConnected(connected) {
 function handleServerMessage(msg) {
     switch (msg.type) {
         case "audio":
+            console.log("[GuardianView] Received audio chunk - agent IS speaking");
+            agentIsActuallySpeaking = true; // Agent is sending audio, so it's actually speaking
             playAudioChunk(msg.data);
             break;
-            
+
+        case "safety_incident":
+            console.log("[GuardianView] 🚨 Received safety incident from backend:", msg.data);
+            // Backend detected an incident - trigger alert immediately
+            const incident = msg.data;
+            const alertText = `${incident.description}\n\n${incident.recommendation}`.trim();
+            showAlert(alertText, incident.severity || "high");
+            break;
+
         case "text":
+            console.log("[GuardianView] Received text message:", msg.data.substring(0, 50));
             addAgentMessage(msg.data);
             break;
-            
+
         case "output_transcription":
+            console.log("[GuardianView] Received output transcription:", msg.data.substring(0, 50));
             addAgentMessage(msg.data);
             break;
-            
+
         case "input_transcription":
             addUserMessage(msg.data);
             break;
-            
+
         case "turn_complete":
+            console.log("[GuardianView] Turn complete - agentIsActuallySpeaking:", agentIsActuallySpeaking);
             // Turn is done, agent finished speaking
             break;
-            
+
         case "interrupted":
             clearPlaybackQueue();
+            // Clear the current agent message to prevent resuming old speech
+            if (currentAgentMessage) {
+                currentAgentMessage.remove();
+                currentAgentMessage = null;
+            }
+            agentIsActuallySpeaking = false;
             break;
     }
 }
@@ -406,60 +468,146 @@ function addUserMessage(text) {
 }
 
 let currentAgentMessage = null;
+let agentIsActuallySpeaking = false; // Track if agent sent audio (is actually speaking)
 
 function addAgentMessage(text) {
+    console.log(`[GuardianView] addAgentMessage() called with text: "${text.substring(0, 100)}"`);
+    console.log(`[GuardianView] agentIsActuallySpeaking flag: ${agentIsActuallySpeaking}`);
+
+    // Filter out unwanted words and phrases
+    const lower = text.toLowerCase();
+    const unwantedPatterns = [
+        "silence",
+        "awaiting visual data",
+        "awaiting visual input",
+        "analyzing current frame",
+        "analyzing immediate hazard",
+        "analyzing the setting",
+        "analyzing the hazard",
+        "assuming implicit safety check",
+        "analyzing implicit hazard",
+        "i am still awaiting",
+        "i'm currently focused on",
+        "i'm analyzing",
+        "no new image data",
+        "waiting for visual data",
+        "without a visual input",
+        "i have nothing to process",
+        "remaining silent",
+        "adhering to rule",
+        "assessing the immediate risk",
+        "the user's positioning",
+        "profile highlights this",
+        "indicates a critical hazard"
+    ];
+
+    // Check if message contains any unwanted patterns
+    for (const pattern of unwantedPatterns) {
+        if (lower.includes(pattern)) {
+            console.log("[GuardianView] ❌ FILTERED unwanted message:", text.substring(0, 100));
+            return; // Don't display this message at all
+        }
+    }
+
+    if (lower.trim() === "safe" || lower.trim() === "okay" || lower.trim() === "ok") {
+        console.log("[GuardianView] ❌ FILTERED unwanted message:", text);
+        return;
+    }
+
+    console.log("[GuardianView] ✅ Message NOT filtered - proceeding to display");
+
     // Accumulate streaming text into current message
     if (!currentAgentMessage) {
         currentAgentMessage = document.createElement("div");
         currentAgentMessage.className = "agent-message";
+        currentAgentMessage._fullText = ""; // Track full accumulated text
         transcriptLog.appendChild(currentAgentMessage);
     }
-    currentAgentMessage.textContent += text;
+
+    currentAgentMessage._fullText += text;
+    currentAgentMessage.textContent = currentAgentMessage._fullText;
     transcriptLog.scrollTop = transcriptLog.scrollHeight;
-    
-    // Detect severity keywords for alert banner
-    const lower = text.toLowerCase();
-    if (lower.includes("danger") || lower.includes("stop") || lower.includes("warning") || lower.includes("critical")) {
-        showAlert(text, "critical");
-    } else if (lower.includes("caution") || lower.includes("careful") || lower.includes("hazard")) {
-        showAlert(text, "high");
-    }
-    
+
     // Reset after a pause
     clearTimeout(currentAgentMessage._resetTimer);
     currentAgentMessage._resetTimer = setTimeout(() => {
+        console.log(`[GuardianView] ⏰ 2-second timer fired - message complete`);
+        console.log(`[GuardianView] Message text: ${currentAgentMessage ? currentAgentMessage._fullText.substring(0, 100) : 'null'}`);
+
+        // NOTE: We DO NOT trigger alerts based on speech anymore
+        // Alerts are ONLY triggered by backend safety_incident messages (from log_safety_incident tool)
+        // This prevents verbose "thinking" messages from triggering false alerts
+
         currentAgentMessage = null;
+        agentIsActuallySpeaking = false; // Reset speaking flag
+        console.log(`[GuardianView] Reset flags - agentIsActuallySpeaking now: ${agentIsActuallySpeaking}`);
     }, 2000);
 }
 
+function summarizeText(text, maxSentences = 3) {
+    // Split text into sentences
+    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+
+    // Take only the first maxSentences
+    const summary = sentences.slice(0, maxSentences).join(' ').trim();
+
+    return summary;
+}
+
 function showAlert(text, severity) {
+    console.log(`[GuardianView] showAlert() called - severity: ${severity}, text: ${text.substring(0, 50)}...`);
     alertBanner.style.display = "flex";
     alertBanner.className = "alert-banner " + severity;
-    alertText.textContent = text.substring(0, 120);
-    
+    alertText.textContent = summarizeText(text, 3); // Limit to 3 sentences
+
+    // Pause safety score recovery while alert is active
+    pauseSafetyScoreRecovery();
+
     // Auto-hide after 8 seconds
     clearTimeout(alertBanner._hideTimer);
     alertBanner._hideTimer = setTimeout(() => {
         alertBanner.style.display = "none";
+        console.log("[GuardianView] Alert cleared - resuming safety score recovery");
+        // Resume safety score recovery when alert is cleared
+        resumeSafetyScoreRecovery();
     }, 8000);
-    
-    // Add to incident log
-    addIncident(severity, text);
+
+    // Add to incident log with summary
+    addIncident(severity, summarizeText(text, 3));
 }
 
 function addIncident(severity, description) {
+    console.log(`[GuardianView] addIncident() called - severity: ${severity}`);
     const noIncidents = incidentLog.querySelector(".no-incidents");
     if (noIncidents) noIncidents.remove();
 
     const time = new Date().toLocaleTimeString();
     const div = document.createElement("div");
     div.className = "incident-item " + severity;
-    div.innerHTML = `<strong>${time}</strong> ${description.substring(0, 80)}`;
+    div.innerHTML = `<strong>${time}</strong> ${description}`;
     incidentLog.prepend(div);
 
-    // UI Enhancements: Update safety score and video border
-    updateSafetyScoreUI(severity);
-    triggerVideoBorderPulse(severity);
+    // CRITICAL: Every incident MUST trigger these UI updates
+    console.log("[GuardianView] Incident logged - dropping safety score to 0");
+    updateSafetyScoreUI(); // Drop score to 0
+    triggerVideoBorderPulse(severity); // Pulse video border
+
+    // Ensure alert banner is visible for this incident
+    if (alertBanner.style.display !== "flex") {
+        console.log("[GuardianView] Alert banner not visible - showing it now");
+        alertBanner.style.display = "flex";
+        alertBanner.className = "alert-banner " + severity;
+        alertText.textContent = description;
+
+        // Pause recovery and auto-hide
+        pauseSafetyScoreRecovery();
+        clearTimeout(alertBanner._hideTimer);
+        alertBanner._hideTimer = setTimeout(() => {
+            alertBanner.style.display = "none";
+            console.log("[GuardianView] Alert cleared - resuming safety score recovery");
+            resumeSafetyScoreRecovery();
+        }, 8000);
+    }
 }
 
 // ===== UI-ONLY ENHANCEMENTS =====
@@ -468,20 +616,32 @@ function addIncident(severity, description) {
 let currentSafetyScore = 100;
 let scoreRecoveryInterval = null;
 
-function updateSafetyScoreUI(severity) {
+function updateSafetyScoreUI() {
+    console.log("[GuardianView] updateSafetyScoreUI() called - dropping score to 0");
+    const scoreElement = document.getElementById("safetyScore");
+    const gaugeFill = document.getElementById("gaugeFill");
+
+    if (!scoreElement || !gaugeFill) {
+        console.warn("[GuardianView] Safety score elements not found!");
+        return;
+    }
+
+    // Drop safety score to 0 when any alert is triggered
+    const previousScore = currentSafetyScore;
+    currentSafetyScore = 0;
+    console.log(`[GuardianView] Safety score: ${previousScore} → ${currentSafetyScore}`);
+
+    // Pause any existing recovery to reset it
+    pauseSafetyScoreRecovery();
+
+    updateSafetyScoreDisplay();
+}
+
+function updateSafetyScoreDisplay() {
     const scoreElement = document.getElementById("safetyScore");
     const gaugeFill = document.getElementById("gaugeFill");
 
     if (!scoreElement || !gaugeFill) return;
-
-    const scorePenalty = {
-        critical: 30,
-        high: 20,
-        medium: 10,
-        low: 5
-    };
-
-    currentSafetyScore = Math.max(0, currentSafetyScore - (scorePenalty[severity] || 5));
 
     scoreElement.textContent = currentSafetyScore;
     gaugeFill.style.width = currentSafetyScore + "%";
@@ -496,29 +656,27 @@ function updateSafetyScoreUI(severity) {
         scoreElement.classList.add("warning");
         gaugeFill.classList.add("warning");
     }
+}
 
-    if (!scoreRecoveryInterval && currentSafetyScore < 100) {
+function pauseSafetyScoreRecovery() {
+    if (scoreRecoveryInterval) {
+        clearInterval(scoreRecoveryInterval);
+        scoreRecoveryInterval = null;
+    }
+}
+
+function resumeSafetyScoreRecovery() {
+    // Only start recovery if score is below 100 and not already running
+    if (currentSafetyScore < 100 && !scoreRecoveryInterval) {
         scoreRecoveryInterval = setInterval(() => {
             if (currentSafetyScore < 100) {
-                currentSafetyScore = Math.min(100, currentSafetyScore + 1);
-                scoreElement.textContent = currentSafetyScore;
-                gaugeFill.style.width = currentSafetyScore + "%";
-
-                scoreElement.classList.remove("warning", "danger");
-                gaugeFill.classList.remove("warning", "danger");
-
-                if (currentSafetyScore < 50) {
-                    scoreElement.classList.add("danger");
-                    gaugeFill.classList.add("danger");
-                } else if (currentSafetyScore < 75) {
-                    scoreElement.classList.add("warning");
-                    gaugeFill.classList.add("warning");
-                }
+                currentSafetyScore = Math.min(100, currentSafetyScore + 20);
+                updateSafetyScoreDisplay();
             } else {
                 clearInterval(scoreRecoveryInterval);
                 scoreRecoveryInterval = null;
             }
-        }, 3000);
+        }, 5000); // Recover 20 points every 5 seconds
     }
 }
 

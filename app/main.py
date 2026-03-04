@@ -161,7 +161,7 @@ async def websocket_endpoint(
                 elif msg_type == "image":
                     # Video frame from camera (base64 JPEG)
                     image_data = base64.b64decode(msg["data"])
-                    # Send image as content so it's included in the model's context
+                    # Send image as content (not realtime) so it persists in context for [SAFETY_CHECK]
                     live_request_queue.send_content(
                         types.Content(
                             role="user",
@@ -172,12 +172,19 @@ async def websocket_endpoint(
 
                 elif msg_type == "text":
                     # Text message
+                    text_content = msg.get("text", "")
+                    print(f"[GuardianView] Sending text prompt: {text_content[:50]}...")
                     live_request_queue.send_content(
                         types.Content(
                             role="user",
-                            parts=[types.Part.from_text(text=msg.get("text", ""))],
+                            parts=[types.Part.from_text(text=text_content)],
                         )
                     )
+
+                elif msg_type == "interrupt":
+                    # User interrupted - just clear frontend playback queue
+                    # The continued audio stream will naturally interrupt the agent
+                    print("[GuardianView] User interrupted agent (client-side handled)")
 
                 elif msg_type == "activity_start":
                     live_request_queue.send_activity_start()
@@ -205,8 +212,21 @@ async def websocket_endpoint(
                 live_request_queue=live_request_queue,
                 run_config=run_config,
             ):
+                # Check for tool calls/results (safety incidents)
                 if event.content and event.content.parts:
                     for part in event.content.parts:
+                        # Function response (tool result)
+                        if hasattr(part, 'function_response') and part.function_response:
+                            func_name = part.function_response.name
+                            if func_name == "log_safety_incident":
+                                result = part.function_response.response
+                                if isinstance(result, dict) and "incident" in result:
+                                    incident = result["incident"]
+                                    print(f"[GuardianView] Sending safety incident to frontend: {incident}")
+                                    await websocket.send_text(
+                                        json.dumps({"type": "safety_incident", "data": incident})
+                                    )
+
                         # Audio response
                         if part.inline_data and part.inline_data.mime_type and "audio" in part.inline_data.mime_type:
                             audio_b64 = base64.b64encode(part.inline_data.data).decode("utf-8")
@@ -215,6 +235,7 @@ async def websocket_endpoint(
                             )
                         # Text response
                         elif part.text:
+                            print(f"[GuardianView] Agent response (text): {part.text[:100]}...")
                             await websocket.send_text(
                                 json.dumps({"type": "text", "data": part.text})
                             )

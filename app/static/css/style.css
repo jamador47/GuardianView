@@ -423,6 +423,10 @@ body::after {
     font-weight: 600;
     font-size: 15px;
     line-height: 1.4;
+    word-wrap: break-word;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    flex: 1;
 }
 
 /* ===== CONTROL BAR ===== */
@@ -673,6 +677,7 @@ body::after {
 /* Incident Section */
 .incident-log {
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 12px 16px;
     display: flex;
     flex-direction: column;
@@ -699,6 +704,9 @@ body::after {
     font-size: 12px;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
     animation: messageSlideIn 0.3s ease-out;
+    word-wrap: break-word;
+    word-break: break-word;
+    overflow-wrap: break-word;
 }
 
 .incident-item:hover {
