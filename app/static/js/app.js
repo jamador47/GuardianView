@@ -163,10 +163,10 @@ function startFrameCapture() {
                     // Always send the camera frame
                     websocket.send(JSON.stringify({ type: "image", data: base64 }));
 
-                    // Every 2 frames (2 seconds at 1fps), trigger a safety check
+                    // Every frame (1 second at 1fps), trigger a safety check
                     frameCount++;
                     console.log(`[GuardianView] Frame count: ${frameCount}`);
-                    if (frameCount >= 2) {
+                    if (frameCount >= 1) {
                         frameCount = 0;
                         console.log("[GuardianView] Sending [SAFETY_CHECK] prompt");
                         websocket.send(JSON.stringify({
@@ -474,9 +474,10 @@ function addAgentMessage(text) {
     console.log(`[GuardianView] addAgentMessage() called with text: "${text.substring(0, 100)}"`);
     console.log(`[GuardianView] agentIsActuallySpeaking flag: ${agentIsActuallySpeaking}`);
 
-    // Filter out unwanted words and phrases
+    // FILTER: Discard model thinking/analysis
     const lower = text.toLowerCase();
-    const unwantedPatterns = [
+    const blocklist = [
+        // Original filters
         "silence",
         "awaiting visual data",
         "awaiting visual input",
@@ -498,19 +499,103 @@ function addAgentMessage(text) {
         "assessing the immediate risk",
         "the user's positioning",
         "profile highlights this",
-        "indicates a critical hazard"
+        "indicates a critical hazard",
+        // New surgical filters for thinking/reasoning leaks
+        "safety_check",
+        "assessing environmental",
+        "evaluating current safety",
+        "no visible hazard",
+        "no direct interaction",
+        "environment appears safe",
+        "observing a safe state",
+        "prioritizing current safety",
+        "action remains as before",
+        "necessitates an independent analysis",
+        "based on the stream of prompts",
+        "i've determined the context",
+        "my response is now",
+        "continued monitoring",
+        "no immediate concern",
+        "the context is a standard",
+        "currently focused on the shift",
+        "evaluation concludes",
+        // Additional patterns from user's latest report
+        "assessing visual data",
+        "evaluating the context",
+        "confirming hazard absence",
+        "assessing immediate context",
+        "re-evaluating environmental",
+        "confirming initial assessment",
+        "assessing initial context",
+        "assessing image content",
+        "confirming visual data",
+        "my assessment is that",
+        "my analysis",
+        "i have analyzed",
+        "i've examined",
+        "i've analyzed",
+        "i've noted",
+        "i've checked",
+        "i've re-examined",
+        "i've initiated analysis",
+        "i am now thoroughly analyzing",
+        "i am performing the safety checks",
+        "i have reviewed",
+        "my focus remains on",
+        "my current assessment",
+        "my check did not reveal",
+        "presents no immediate hazards",
+        "no evidence of industrial",
+        "no match for industrial hazards",
+        "no further action",
+        "no critical actions are necessary",
+        "no identified hazards",
+        "the scene presents no hazards",
+        "appears to be safe",
+        "i see nothing unsafe",
+        "i see no issues",
+        "based on my current safety profile",
+        "under the defined profile",
+        "based on the provided data and rules",
+        "according to the",
+        "solidifying my initial assessment",
+        "reinforced my initial conclusions",
+        "given the current context"
     ];
 
-    // Check if message contains any unwanted patterns
-    for (const pattern of unwantedPatterns) {
-        if (lower.includes(pattern)) {
-            console.log("[GuardianView] ❌ FILTERED unwanted message:", text.substring(0, 100));
-            return; // Don't display this message at all
-        }
+    // Check if message contains any blocklisted patterns
+    if (blocklist.some(phrase => lower.includes(phrase))) {
+        console.log("[GuardianView] ❌ FILTERED thinking/analysis:", text.substring(0, 100));
+        return;
+    }
+
+    // Filter exact matches of "[OK]" or single-word safe responses
+    if (text.trim() === "[OK]" || lower.trim() === "[ok]") {
+        console.log("[GuardianView] ❌ FILTERED [OK]:", text);
+        return;
     }
 
     if (lower.trim() === "safe" || lower.trim() === "okay" || lower.trim() === "ok") {
-        console.log("[GuardianView] ❌ FILTERED unwanted message:", text);
+        console.log("[GuardianView] ❌ FILTERED safe/okay:", text);
+        return;
+    }
+
+    // Filter messages longer than 500 characters (thinking out loud, not warning)
+    if (text.length > 500) {
+        console.log("[GuardianView] ❌ FILTERED too long (thinking):", text.substring(0, 100));
+        return;
+    }
+
+    // Filter messages that start with markdown headers (thinking sections)
+    if (text.trim().startsWith("**") || text.trim().startsWith("##")) {
+        console.log("[GuardianView] ❌ FILTERED markdown header (thinking):", text.substring(0, 100));
+        return;
+    }
+
+    // Filter messages containing multiple sentences (real alerts are 1-2 sentences)
+    const sentenceCount = (text.match(/[.!?]+/g) || []).length;
+    if (sentenceCount > 3) {
+        console.log("[GuardianView] ❌ FILTERED multi-sentence (thinking):", text.substring(0, 100));
         return;
     }
 
@@ -685,12 +770,22 @@ function triggerVideoBorderPulse(severity) {
     const videoContainer = document.getElementById("videoContainer");
     if (!videoContainer) return;
 
-    videoContainer.classList.remove("alert-critical", "alert-high");
+    videoContainer.classList.remove("alert-critical", "alert-high", "flash-critical", "flash-high");
 
     if (severity === "critical") {
         videoContainer.classList.add("alert-critical");
+        videoContainer.classList.add("flash-critical");
+        // Remove flash class after animation completes
+        setTimeout(() => {
+            videoContainer.classList.remove("flash-critical");
+        }, 500);
     } else if (severity === "high") {
         videoContainer.classList.add("alert-high");
+        videoContainer.classList.add("flash-high");
+        // Remove flash class after animation completes
+        setTimeout(() => {
+            videoContainer.classList.remove("flash-high");
+        }, 500);
     }
 
     setTimeout(() => {
