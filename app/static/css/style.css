@@ -945,6 +945,7 @@ body::after {
 
 /* ===== RESPONSIVE ===== */
 
+/* Tablet (1024px and below) */
 @media (max-width: 1024px) {
     .sidebar {
         width: 360px;
@@ -953,31 +954,349 @@ body::after {
     .safety-gauge {
         min-width: 150px;
     }
+
+    .hud-corner {
+        padding: 12px;
+    }
+
+    .profile-badge,
+    .connection-status,
+    .safety-gauge,
+    .session-timer {
+        padding: 6px 12px;
+    }
+
+    .profile-name,
+    .status-text {
+        font-size: 10px;
+    }
+
+    .gauge-value {
+        font-size: 24px;
+    }
+
+    .timer-value {
+        font-size: 14px;
+    }
 }
 
+/* Mobile (768px and below) */
 @media (max-width: 768px) {
+    body {
+        overflow-y: auto;
+        height: auto;
+    }
+
     .app-container {
         flex-direction: column;
+        height: auto;
+        min-height: 100vh;
+    }
+
+    .main-area {
+        padding: 12px;
+        gap: 12px;
+    }
+
+    .video-container {
+        min-height: 50vh;
+        height: auto;
+        aspect-ratio: 4/3;
     }
 
     .sidebar {
         width: 100%;
         border-left: none;
         border-top: 1px solid var(--border-color);
-        max-height: 40vh;
+        max-height: none;
+        flex: 0 0 auto;
     }
 
+    .section-content {
+        max-height: 300px;
+    }
+
+    .transcript-log {
+        max-height: 250px;
+    }
+
+    .incident-log {
+        max-height: 200px;
+    }
+
+    /* Control Bar - Stack on mobile */
     .control-bar {
         flex-direction: column;
+        padding: 12px;
+        gap: 12px;
     }
 
     .control-group-left,
     .control-group-right {
         width: 100%;
+        flex-direction: column;
+    }
+
+    .control-group-left {
+        order: 2;
+    }
+
+    .control-group-right {
+        order: 1;
+    }
+
+    .control-btn {
+        width: 100%;
+        justify-content: center;
+        padding: 12px 16px;
+    }
+
+    .text-input {
+        width: 100%;
+    }
+
+    /* HUD Adjustments for mobile */
+    .hud-corner {
+        padding: 8px;
+    }
+
+    .profile-badge {
+        padding: 6px 10px;
+    }
+
+    .profile-icon {
+        font-size: 16px;
+    }
+
+    .profile-name {
+        font-size: 9px;
+    }
+
+    .connection-status {
+        padding: 6px 10px;
+    }
+
+    .status-text {
+        font-size: 9px;
+    }
+
+    .status-dot {
+        width: 8px;
+        height: 8px;
+    }
+
+    /* Hide bottom HUD elements on mobile to reduce clutter */
+    .hud-bottom-left,
+    .hud-bottom-right {
+        display: none;
+    }
+
+    /* Alert banner adjustments */
+    .alert-banner {
+        top: 8px;
+        width: calc(100% - 16px);
+        max-width: 100%;
+    }
+
+    .alert-content {
+        padding: 10px 14px;
+    }
+
+    .alert-icon {
+        font-size: 20px;
+    }
+
+    .alert-text {
+        font-size: 13px;
+    }
+
+    /* Settings adjustments */
+    .settings-grid {
+        padding: 12px;
+    }
+
+    .control-btn-primary {
+        padding: 14px 20px;
+        font-size: 15px;
+    }
+}
+
+/* Small Mobile (480px and below) */
+@media (max-width: 480px) {
+    .main-area {
+        padding: 8px;
+        gap: 8px;
+    }
+
+    .video-container {
+        border-radius: var(--radius-md);
+        min-height: 40vh;
+    }
+
+    .control-bar {
+        padding: 8px;
+        gap: 8px;
+        border-radius: var(--radius-md);
+    }
+
+    .control-btn {
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+
+    .btn-icon {
+        font-size: 16px;
+    }
+
+    .btn-label {
+        font-size: 12px;
+    }
+
+    /* Stack HUD elements more compactly */
+    .hud-top-left,
+    .hud-top-right {
+        position: relative;
+        display: inline-block;
+    }
+
+    .hud-overlay {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px;
+        position: absolute;
+        inset: auto;
+        top: 0;
+        left: 0;
+        right: 0;
+    }
+
+    .profile-badge,
+    .connection-status {
+        padding: 4px 8px;
+        font-size: 10px;
+    }
+
+    .profile-icon {
+        font-size: 14px;
+    }
+
+    .profile-name,
+    .status-text {
+        font-size: 8px;
+    }
+
+    /* Alert adjustments for small screens */
+    .alert-banner {
+        top: 4px;
+        width: calc(100% - 8px);
+    }
+
+    .alert-content {
+        padding: 8px 12px;
+        gap: 8px;
+    }
+
+    .alert-icon {
+        font-size: 18px;
+    }
+
+    .alert-text {
+        font-size: 12px;
+    }
+
+    /* Sidebar sections */
+    .section-header {
+        padding: 10px 12px;
+    }
+
+    .section-title {
+        font-size: 10px;
+    }
+
+    .settings-grid {
+        padding: 8px;
+        gap: 12px;
+    }
+
+    .setting-label {
+        font-size: 11px;
+    }
+
+    .setting-select {
+        padding: 6px 10px;
+        font-size: 12px;
+    }
+
+    /* Message sizing */
+    .system-message,
+    .user-message,
+    .agent-message {
+        font-size: 12px;
+        padding: 8px 12px;
+        max-width: 90%;
+    }
+
+    .incident-item {
+        font-size: 11px;
+        padding: 8px 10px;
+    }
+}
+
+/* Landscape mobile adjustments */
+@media (max-width: 768px) and (orientation: landscape) {
+    .video-container {
+        min-height: 60vh;
+    }
+
+    .sidebar {
+        max-height: 50vh;
+        overflow-y: auto;
     }
 
     .hud-bottom-left,
     .hud-bottom-right {
-        display: none;
+        display: block;
+    }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+    .control-btn {
+        min-height: 44px;
+        padding: 12px 20px;
+    }
+
+    .text-input {
+        min-height: 44px;
+        font-size: 16px; /* Prevents iOS zoom on focus */
+    }
+
+    .setting-select {
+        min-height: 44px;
+        font-size: 16px; /* Prevents iOS zoom on focus */
+    }
+
+    .control-btn:hover {
+        transform: none;
+    }
+
+    .control-btn:active {
+        transform: scale(0.97);
+    }
+
+    /* Better touch targets for toggle switches */
+    .toggle-slider {
+        width: 50px;
+        height: 28px;
+    }
+
+    .toggle-slider::before {
+        width: 22px;
+        height: 22px;
+    }
+
+    .setting-toggle input[type="checkbox"]:checked + .toggle-slider::before {
+        left: 24px;
     }
 }
