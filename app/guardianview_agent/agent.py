@@ -63,19 +63,24 @@ SAFETY_PROFILES = {
         "name": "Clinical / Surgical Safety",
         "hazards": [
             "Sterile field violations: non-sterile items crossing the field boundary",
-            "PPE compliance: missing gloves, mask, gown, or face shield",
+            "PPE compliance: operator performing clinical procedures without surgical mask (REQUIRED for all patient contact and procedures), missing gloves, missing gown, or missing face shield when required",
             "Sharp instrument handling: improper passing, uncapped needles",
+            "Syringe safety: recapping needles using two hands (must use one-handed scoop technique), needle stick hazards, improper disposal of used syringes, sharing needles between patients",
+            "Syringe labeling: unlabeled syringes on tray, unclear medication identification, missing patient name or drug concentration on syringe label",
+            "Blood pressure measurement errors: cuff placed on forearm instead of upper arm (must be 2-3cm above elbow crease), incorrect cuff size for patient arm, cuff placed over clothing, arm not at heart level, patient talking during measurement, not waiting 5 minutes before measurement",
+            "Medication safety: unlabeled syringes, wrong dosage preparation, expired medications",
+            "Pill handling violations: mixing unlabeled pills together, pills from different prescriptions in same container, loose pills without original packaging, crushing pills without verifying it's safe to do so",
+            "Pill dispensing errors: not verifying patient identity with two identifiers, not checking for allergies, incorrect pill count, wrong medication pulled from shelf",
             "Instrument count discrepancies before and after procedures",
-            "Hand hygiene: missed handwashing or sanitizing steps",
-            "Medication safety: unlabeled syringes, wrong dosage preparation",
+            "Hand hygiene: missed handwashing or sanitizing steps, touching sterile items with unwashed hands",
             "Patient positioning: improper support, fall risks",
-            "Biohazard disposal: sharps in wrong container, improper waste segregation",
+            "Biohazard disposal: sharps in wrong container, improper waste segregation, overfilled sharps container",
         ],
-        "regulations": "OSHA Bloodborne Pathogens Standard (29 CFR 1910.1030), WHO Surgical Safety Checklist, Joint Commission Standards",
+        "regulations": "OSHA Bloodborne Pathogens Standard (29 CFR 1910.1030), WHO Surgical Safety Checklist, Joint Commission Standards, CDC Injection Safety Guidelines, AHA Blood Pressure Measurement Guidelines",
         "severity_rules": {
-            "critical": "Sterile field breach during active procedure, sharps injury risk - INTERRUPT IMMEDIATELY",
-            "high": "Missing PPE, instrument count mismatch - alert immediately",
-            "medium": "Minor protocol deviations - note for post-procedure debrief",
+            "critical": "ANY missing PPE (mask, gloves, gown, face shield) during clinical procedures, sterile field breach during active procedure, sharps injury risk, recapping needle with two hands, unlabeled medication being administered - INTERRUPT IMMEDIATELY",
+            "high": "Instrument count mismatch, unlabeled pills mixed together, blood pressure measurement protocol violation, syringe without label - alert immediately",
+            "medium": "Minor protocol deviations, suboptimal technique - note for post-procedure debrief",
             "low": "Efficiency and ergonomic suggestions",
         },
     },
@@ -155,16 +160,65 @@ def set_alert_language(language: str) -> dict:
     """
     global ALERT_LANGUAGE
     ALERT_LANGUAGE = language
+    _update_agent_instruction()
     return {"status": "success", "language": language, "message": f"Alert language changed to {language}"}
 
 
-# Load the active profile for the system instruction
-active_profile = SAFETY_PROFILES.get(SAFETY_PROFILE, SAFETY_PROFILES["workshop"])
+def set_safety_profile(profile_name: str) -> dict:
+    """Sets the active safety profile and updates the agent's instruction.
 
-SYSTEM_INSTRUCTION = f"""You are GuardianView, an autonomous AI safety watchdog monitoring a workspace through live camera feed.
+    Args:
+        profile_name: Name of the profile to activate (workshop, kitchen, clinical)
+
+    Returns:
+        dict: Confirmation of the profile change.
+    """
+    global SAFETY_PROFILE
+    profile_name = profile_name.strip().lower()
+
+    if profile_name not in SAFETY_PROFILES:
+        return {
+            "status": "error",
+            "error": f"Unknown profile '{profile_name}'. Available: {list(SAFETY_PROFILES.keys())}"
+        }
+
+    SAFETY_PROFILE = profile_name
+    _update_agent_instruction()
+
+    return {
+        "status": "success",
+        "profile": profile_name,
+        "message": f"Safety profile changed to {SAFETY_PROFILES[profile_name]['name']}"
+    }
+
+
+def _build_system_instruction() -> str:
+    """Builds the system instruction dynamically based on current profile and language settings.
+
+    Returns:
+        str: The complete system instruction for the agent.
+    """
+    active_profile = SAFETY_PROFILES.get(SAFETY_PROFILE, SAFETY_PROFILES["workshop"])
+
+    # Add clinical-specific instructions if in clinical mode
+    clinical_instructions = ""
+    if SAFETY_PROFILE == "clinical":
+        clinical_instructions = """
+
+## CLINICAL SETTING INSTRUCTIONS:
+**IMPORTANT - In clinical settings:**
+- The person speaking to you is ALWAYS the OPERATOR (healthcare worker), NEVER the patient
+- Direct ALL alerts and instructions to the OPERATOR, not the patient
+- Use second-person language addressing the operator: "You need to...", "Put on your mask", etc.
+- The OPERATOR is performing procedures on the patient
+- Example: "Stop! You must wear a surgical mask during this procedure" (addressing the operator)
+- Example: "The blood pressure cuff is on the patient's forearm. Place it on the upper arm, 2-3cm above the elbow crease" (instructing the operator)
+"""
+
+    return f"""You are GuardianView, an autonomous AI safety watchdog monitoring a workspace through live camera feed.
 
 ## Your Active Safety Profile: {active_profile['name']}
-
+{clinical_instructions}
 ## LANGUAGE SETTING: {ALERT_LANGUAGE}
 You must speak all safety alerts and responses in {ALERT_LANGUAGE}. When you call log_safety_incident, you must write the description, regulation, and recommendation fields in {ALERT_LANGUAGE} as well. If the user speaks to you in a different language, respond in their language instead.
 
@@ -206,6 +260,18 @@ You must speak all safety alerts and responses in {ALERT_LANGUAGE}. When you cal
 Briefly mention the regulation (e.g., OSHA 1910.133) during your spoken alert so the user understands the 'why'.
 """
 
+
+def _update_agent_instruction():
+    """Updates the root agent's instruction with current profile and language settings."""
+    global root_agent
+    new_instruction = _build_system_instruction()
+    root_agent.instruction = new_instruction
+    print(f"[GuardianView] Agent instruction updated - Profile: {SAFETY_PROFILE}, Language: {ALERT_LANGUAGE}")
+
+
+# Build initial system instruction dynamically
+SYSTEM_INSTRUCTION = _build_system_instruction()
+
 # Ensure you are using the latest native-audio model
 MODEL = os.getenv("GUARDIANVIEW_MODEL", "gemini-2.5-flash-native-audio-preview-12-2025")
 
@@ -220,5 +286,6 @@ root_agent = Agent(
         list_safety_profiles,
         log_safety_incident,
         set_alert_language,
+        set_safety_profile,
     ],
 )
