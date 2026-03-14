@@ -202,6 +202,12 @@ async def websocket_endpoint(
                     # The continued audio stream will naturally interrupt the agent
                     print("[GuardianView] User interrupted agent (client-side handled)")
 
+                elif msg_type == "toggle_email":
+                    # Toggle email notifications
+                    enabled = msg.get("enabled", False)
+                    guardianview_agent_module.toggle_email_notifications(enabled)
+                    print(f"[GuardianView] Email notifications {'enabled' if enabled else 'disabled'}")
+
                 elif msg_type == "activity_start":
                     live_request_queue.send_activity_start()
 

@@ -15,7 +15,7 @@ let frameInterval = null;
 let framesPerSecond = 1;
 
 const userId = "guardianview-user";
-const sessionId = "gv-session-" + Math.random().toString(36).substring(7);
+let sessionId = "gv-session-" + Math.random().toString(36).substring(7); // Generate new session ID on each connection
 
 // --- DOM Elements ---
 const videoPreview = document.getElementById("videoPreview");
@@ -326,9 +326,14 @@ function toggleConnection() {
 }
 
 function connectWebSocket() {
+    // Generate a NEW session ID for each connection
+    // This ensures the agent starts fresh without conversation history
+    sessionId = "gv-session-" + Math.random().toString(36).substring(7);
+    console.log(`[GuardianView] Starting new session: ${sessionId}`);
+
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws/${userId}/${sessionId}`;
-    
+
     websocket = new WebSocket(wsUrl);
     
     websocket.onopen = () => {
@@ -847,7 +852,7 @@ function toggleSidebarSection(header) {
     content.classList.toggle("collapsed");
 }
 
-// --- Profile Badge Update (Visual Only) ---
+// --- Profile Badge Update & Agent Notification ---
 function updateProfileBadge() {
     const select = document.getElementById("profileSelect");
     const profileIcon = document.querySelector(".profile-icon");
@@ -865,6 +870,18 @@ function updateProfileBadge() {
     if (selected) {
         profileIcon.textContent = selected.icon;
         profileName.textContent = selected.name;
+    }
+
+    // IMMEDIATELY update agent's safety profile
+    const profileValue = select.value;
+    if (websocket && isConnected) {
+        // Send direct command to agent to change safety profile
+        const message = `Change safety profile to ${profileValue}`;
+        websocket.send(JSON.stringify({ type: "text", text: message }));
+        addSystemMessage(`Safety profile changed to ${selected.name}`);
+    } else {
+        // If not connected, just show visual change
+        addSystemMessage(`Safety profile will be set to ${selected.name} when you connect.`);
     }
 }
 
@@ -919,6 +936,23 @@ function changeAlertLanguage() {
     const message = `Switch alert language to ${language}`;
     websocket.send(JSON.stringify({ type: "text", text: message }));
     addSystemMessage(`Switching alert language to ${language}...`);
+}
+
+// --- Email Notifications Toggle ---
+function toggleEmailNotifications() {
+    const checkbox = document.getElementById("enableEmailNotifications");
+    const enabled = checkbox.checked;
+
+    // Send toggle request to backend via WebSocket
+    if (websocket && isConnected) {
+        websocket.send(JSON.stringify({
+            type: "toggle_email",
+            enabled: enabled
+        }));
+        addSystemMessage(`Email notifications ${enabled ? 'enabled' : 'disabled'}`);
+    } else {
+        addSystemMessage(`Email notifications will be ${enabled ? 'enabled' : 'disabled'} when you connect.`);
+    }
 }
 
 // --- PDF Report Generation ---
