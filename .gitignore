@@ -9,3 +9,7 @@ build/
 .idea/
 .vscode/
 guardianview_project_story.md
+
+# Firebase credentials (keep this secret!)
+firebase-credentials.json
+*-firebase-*.json

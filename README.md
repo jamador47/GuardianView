@@ -1,5 +1,7 @@
 # 🛡️ GuardianView — Your AI Safety Copilot That Never Blinks
 
+#GeminiLiveAgentChallenge
+
 > Real-time AI safety copilot powered by Gemini Live API. Watches your workspace via camera, detects hazards, alerts you by voice, and adapts to any environment in any language.
 
 ## 💡 Inspiration
@@ -30,9 +32,13 @@ GuardianView is a real-time AI safety copilot powered by Google's Gemini Live AP
 
 - **Dramatic visual alerts:** Critical hazards trigger an instant red flash overlay across the video feed (0.3s duration, semi-transparent) paired with a pulsing border animation, creating an unmissable visual warning that complements the voice alert.
 
-- **Multilingual support:** GuardianView speaks safety in 50+ languages. Configure your preferred alert language in the settings, and the agent will deliver all spoken warnings, pre-task guidance, and recommendations in that language while maintaining full technical accuracy and OSHA compliance.
+- **Multilingual support:** GuardianView speaks safety in 7+ languages (English, Spanish, French, Portuguese, German, Chinese, Japanese). Change the alert language in real-time via the settings dropdown, and the agent will immediately switch to delivering all spoken warnings and recommendations in that language while maintaining full technical accuracy and regulatory compliance.
 
-- **Comprehensive safety reports:** Generate detailed PDF safety reports for any session with a single click. Reports include incident timeline, safety score trends, all detected hazards with severity classifications, timestamps, spoken recommendations, and regulatory citations—ready for compliance documentation.
+- **Comprehensive safety reports:** Generate detailed PDF safety reports for any session with a single click. Reports include session metadata (date, duration, safety profile), summary statistics by severity, full incident timeline with timestamps, hazard descriptions, regulatory citations, and actionable recommendations—ready for compliance documentation.
+
+- **Email incident notifications:** Enable real-time email alerts for every safety incident detected. When a hazard is logged, GuardianView automatically sends a formatted email notification with incident details, timestamp, severity level, regulation violated, and recommended actions—ensuring immediate awareness even when not actively monitoring the dashboard.
+
+- **Firebase incident tracking:** All safety incidents are automatically saved to Firebase Firestore for persistent storage and historical analysis. Track incident trends over time, query by session or severity, and maintain comprehensive safety records across all monitoring sessions.
 
 - **Severity-driven prompt behavior:** The agent's system instruction defines clear severity tiers (critical, high, medium, low) with specific response rules for each. Critical hazards trigger immediate spoken interruptions and visual flashes; minor observations are mentioned conversationally at natural pauses.
 
@@ -94,7 +100,10 @@ pip install -r requirements.txt
 
 # 4. Configure environment
 cp app/.env.example app/.env
-# Edit app/.env and add your GOOGLE_API_KEY
+# Edit app/.env and add:
+# - GOOGLE_API_KEY (required)
+# - EMAIL_* settings (optional - for email notifications)
+# - FIREBASE_CREDENTIALS_PATH (optional - for persistent storage)
 
 # 5. Run the application
 cd app
@@ -104,11 +113,15 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ### Usage
 
 1. Open `http://localhost:8000` in your browser
-2. Select a safety profile (Workshop, Kitchen, or Clinical)
+2. **Configure settings (optional):**
+   - Select a safety profile (Workshop, Kitchen, or Clinical)
+   - Choose alert language from the dropdown
+   - Enable email notifications toggle (requires SMTP configuration in `.env`)
 3. Click **Start Camera** to begin video feed
 4. Click **Start Mic** for voice interaction
 5. Click **Connect** to start real-time safety monitoring
 6. GuardianView will watch your workspace and alert you to hazards
+7. After your session, click **Generate Report** to download a PDF summary
 
 > **Note:** Use headphones to prevent the model from hearing its own audio output.
 
@@ -186,11 +199,55 @@ Follow these steps to verify GuardianView's core capabilities. Each test can be 
 2. Click the **Generate Report** button in the sidebar
 3. **Expected:** A comprehensive PDF safety report downloads automatically, containing:
    - Session metadata (date, duration, profile)
-   - Safety score summary
+   - Summary statistics (total incidents by severity)
    - Full incident timeline with timestamps
    - Each hazard description, severity level, and spoken recommendation
    - Regulatory citations where applicable
+   - General recommendations section
 4. Open the PDF and verify all incidents are documented with proper formatting
+
+### Test 10: Email Notifications
+
+1. Configure email settings in `app/.env`:
+   ```bash
+   EMAIL_RECIPIENT=your-email@example.com
+   SMTP_HOST=smtp.gmail.com
+   SMTP_PORT=587
+   SMTP_USERNAME=your-email@gmail.com
+   SMTP_PASSWORD=your-app-password  # Generate at myaccount.google.com/apppasswords
+   ```
+2. Restart the server and connect
+3. Enable **Email Notifications** toggle in the settings panel
+4. Introduce a safety hazard (e.g., use tool without PPE)
+5. **Expected:** Within seconds, you'll receive an email with:
+   - Subject: "⚠️ GuardianView Safety Alert - CRITICAL"
+   - Incident timestamp, severity, description
+   - Regulation violated and recommendation
+   - Session ID for reference
+6. Check your email inbox to verify the notification was delivered
+
+### Test 11: Firebase Incident Tracking
+
+1. Set up Firebase Firestore:
+   - Create a Firebase project at console.firebase.google.com
+   - Enable Firestore Database (Native mode)
+   - Download service account credentials JSON
+   - Place in `app/` folder as `firebase-credentials.json`
+2. Add to `app/.env`:
+   ```bash
+   FIREBASE_CREDENTIALS_PATH=./firebase-credentials.json
+   ```
+3. Restart the server (you should see "Firebase initialized successfully")
+4. Connect and introduce 2-3 hazards during the session
+5. **Expected:** Check terminal logs for "✅ Incident saved to Firebase: [document-id]"
+6. Go to Firebase Console → Firestore Database
+7. **Expected:** See two collections:
+   - `incidents/` - Contains all individual incidents with full details
+   - `sessions/` - Contains session summaries with incident counts
+8. (Optional) Run the query script:
+   ```bash
+   python scripts/view_firebase_incidents.py
+   ```
 
 ### Troubleshooting
 
@@ -315,11 +372,14 @@ Set the active profile via the `SAFETY_PROFILE` environment variable or the UI d
 
 | Component | Technology |
 |-----------|-----------|
-| AI Model | Gemini 2.0 Flash via Live API |
+| AI Model | Gemini 2.5 Flash Native-Audio via Live API |
 | Agent Framework | Google Agent Development Kit (ADK) |
 | Backend | Python, FastAPI, WebSockets |
 | Frontend | HTML, CSS, JavaScript, Web Audio API |
 | Cloud | Google Cloud Run |
+| Database | Firebase Firestore (incident storage) |
+| Notifications | SMTP Email (aiosmtplib) |
+| Reports | FPDF2 (server-side PDF generation) |
 | Grounding | Google Search (OSHA regulations) |
 
 ## 📁 Project Structure
@@ -334,8 +394,11 @@ guardianview/
 │   │   ├── index.html         # Main UI
 │   │   ├── css/style.css      # Styling
 │   │   └── js/app.js          # WebSocket, camera, audio handling
-│   ├── main.py                # FastAPI server with WebSocket bidi-streaming
-│   └── .env.example           # Environment configuration template
+│   ├── main.py                # FastAPI server with WebSocket + PDF generation
+│   ├── .env.example           # Environment configuration template
+│   └── firebase-credentials.json  # (optional) Firebase service account key
+├── scripts/
+│   └── view_firebase_incidents.py  # Query tool for Firebase data
 ├── requirements.txt
 ├── Dockerfile
 ├── deploy.sh                  # Automated Cloud Run deployment
@@ -388,7 +451,13 @@ Synchronizing the visual flash overlay, border pulse animation, and voice alert 
 
 ## 🔮 What's Next
 
-- **Persistent incident logging:** Connect the incident logging tool to Cloud Firestore for durable, queryable safety records across sessions and users.
+- ✅ **Persistent incident logging:** ~~Connect the incident logging tool to Cloud Firestore~~ **COMPLETED** — All incidents are now automatically saved to Firebase Firestore with session tracking and queryable history.
+
+- ✅ **Email notifications:** ~~Add real-time email alerts for incidents~~ **COMPLETED** — Email notifications are now available with configurable SMTP settings and toggleable in the UI.
+
+- ✅ **Multilingual voice alerts:** ~~Support multiple languages~~ **COMPLETED** — Real-time language switching for 7+ languages (English, Spanish, French, Portuguese, German, Chinese, Japanese).
+
+- ✅ **PDF safety reports:** ~~Generate downloadable incident reports~~ **COMPLETED** — Comprehensive PDF reports with session metadata, incident timeline, and recommendations.
 
 - **Externalized profiles:** Move safety profiles from in-code dictionaries to Cloud Storage JSON files, enabling dynamic profile loading and user-created custom profiles without code deployments.
 
