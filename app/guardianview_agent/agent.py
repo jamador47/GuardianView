@@ -32,6 +32,16 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 
+# Log email configuration status at startup
+if EMAIL_RECIPIENT and SMTP_USERNAME and SMTP_PASSWORD:
+    print(f"[GuardianView] Email configuration detected:")
+    print(f"  - Recipient: {EMAIL_RECIPIENT}")
+    print(f"  - SMTP Host: {SMTP_HOST}:{SMTP_PORT}")
+    print(f"  - Username: {SMTP_USERNAME}")
+    print(f"  - Status: Ready (toggle in UI to enable)")
+else:
+    print("[GuardianView] Email notifications not configured (missing EMAIL_RECIPIENT, SMTP_USERNAME, or SMTP_PASSWORD in .env)")
+
 # Firebase initialization
 firebase_db = None
 try:
@@ -319,14 +329,21 @@ def log_safety_incident(
     # Schedule email notification (async - will be handled by event loop)
     # Note: Email sending happens in the background
     if EMAIL_ENABLED:
+        print(f"[GuardianView] Email notifications are ENABLED - attempting to send email to {EMAIL_RECIPIENT}")
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
+                print(f"[GuardianView] Event loop is running - creating task for email send")
                 loop.create_task(send_email_notification(incident))
             else:
+                print(f"[GuardianView] No running event loop - using asyncio.run()")
                 asyncio.run(send_email_notification(incident))
         except Exception as e:
-            print(f"[GuardianView] Failed to schedule email: {e}")
+            print(f"[GuardianView] ❌ Failed to schedule email: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        print(f"[GuardianView] Email notifications are DISABLED (EMAIL_ENABLED={EMAIL_ENABLED})")
 
     print(f"[SAFETY INCIDENT] {json.dumps(incident)}")
     return {"status": "logged", "incident": incident}
